@@ -5,7 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define MAX_STDIN_ARGS 64
+#define MAX_STDIN_ARGS 1024
 #define ARGS_VIA_STDIN 0
 
 static int (*real_main) (int, char **, char **);
@@ -18,7 +18,7 @@ int fake_main(int argc, char **argv, char **env)
 
 	if (ARGS_VIA_STDIN) {
 		// Get true arguments via stdin
-		int len;
+		unsigned int len;
 		char *line;
 		size_t n = 0;
 		len = getline(&line, &n, stdin);
@@ -38,12 +38,12 @@ int fake_main(int argc, char **argv, char **env)
 		argc2 = argc;
 		int i;
 		for (i = 1; i < argc; i++) {
-			// Copy argv
-			argv2[i] = malloc(strlen(argv[i]) * sizeof(char));
+			// Copy argument
+			argv2[i] = malloc((strlen(argv[i]) + 1) * sizeof(char));
 			strcpy(argv2[i], argv[i]);
 
-			// Erase argv
-			char len = strlen(argv[i]);
+			// Erase argument
+			unsigned int len = strlen(argv[i]);
 			char *ptr;
 			for (ptr = argv[i]; ptr < argv[i] + len; ptr++)
 				*ptr = '\0';
@@ -88,6 +88,6 @@ int __libc_start_main(
 		}
 	}
 
-	return real__libc_start_main(fake_main, argc, ubp_av, init, fini, rtld_fini,
-		stack_end);
+	return real__libc_start_main(fake_main, argc, ubp_av, init, fini,
+		rtld_fini, stack_end);
 }
