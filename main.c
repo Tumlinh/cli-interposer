@@ -5,28 +5,51 @@
 #include <string.h>
 #include <unistd.h>
 
+#define MAX_STDIN_ARGS 64
+#define ARGS_VIA_STDIN 0
+
 static int (*real_main) (int, char **, char **);
 
 int fake_main(int argc, char **argv, char **env)
 {
-	char max_args = 64;
-	char **argv2 = malloc(max_args * sizeof(char *));
+	char **argv2 = malloc(MAX_STDIN_ARGS * sizeof(*argv2));
+	int argc2 = 1;
 	argv2[0] = argv[0];
 
-	// Get true arguments via stdin
-	int len;
-	char *line;
-	size_t n = 0;
-	len = getline(&line, &n, stdin);
-	if (line[len - 1] == '\n')
-		line[len - 1] = '\0';
-	char *saveptr, *tok;
-	tok = strtok_r(line, " ", &saveptr);
-	argv2[1] = tok;
-	int argc2;
-	for (argc2 = 2; (tok = strtok_r(NULL, " ", &saveptr)) != NULL; argc2++)
-		argv2[argc2] = tok;
-	
+	if (ARGS_VIA_STDIN) {
+		// Get true arguments via stdin
+		int len;
+		char *line;
+		size_t n = 0;
+		len = getline(&line, &n, stdin);
+		if (line[len - 1] == '\n')
+			line[len - 1] = '\0';
+		char *saveptr, *tok;
+		tok = strtok_r(line, " ", &saveptr);
+		if (tok != NULL) {
+			argv2[1] = tok;
+			for (argc2 = 2; tok != NULL; argc2++) {
+				argv2[argc2] = tok;
+				tok = strtok_r(NULL, " ", &saveptr);
+			}
+		}
+	} else {
+		// Hide original arguments (legacy mode)
+		argc2 = argc;
+		int i;
+		for (i = 1; i < argc; i++) {
+			// Copy argv
+			argv2[i] = malloc(strlen(argv[i]) * sizeof(char));
+			strcpy(argv2[i], argv[i]);
+
+			// Erase argv
+			char len = strlen(argv[i]);
+			char *ptr;
+			for (ptr = argv[i]; ptr < argv[i] + len; ptr++)
+				*ptr = '\0';
+		}
+	}
+
 	// Call real main() with the new arguments
 	return real_main(argc2, argv2, env);
 }
@@ -54,14 +77,15 @@ int __libc_start_main(
 		// Change program name (works against ps but top manages to
 		// find the original name)
 		// TODO: make it configurable
+		char old_name_len = strlen(ubp_av[0]);
 		char *new_name = "xxx";
 		strcpy(ubp_av[0], new_name);
 
-		// Erase following arguments to avoid blanks in the command line
-		char *ptr;
-		char *arg_end = ubp_av[argc - 1] + strlen (ubp_av[argc - 1]);
-		for(ptr = ubp_av[0] + strlen(new_name); ptr < arg_end; ptr++)
+		char *ptr = ubp_av[0] + strlen(new_name);
+		while (ptr < ubp_av[0] + old_name_len) {
 			*ptr = '\0';
+			ptr++;
+		}
 	}
 
 	return real__libc_start_main(fake_main, argc, ubp_av, init, fini, rtld_fini,
