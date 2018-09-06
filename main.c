@@ -5,7 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define MAX_STDIN_ARGS 1024
+#define MAX_STDIN_ARGS 65536
 #define ARGS_VIA_STDIN 0
 
 static int (*real_main) (int, char **, char **);
@@ -18,12 +18,13 @@ int fake_main(int argc, char **argv, char **env)
 
 	if (ARGS_VIA_STDIN) {
 		// Get true arguments via stdin
-		unsigned int len;
+		ssize_t len;
 		char *line;
 		size_t n = 0;
 		len = getline(&line, &n, stdin);
 		if (line[len - 1] == '\n')
 			line[len - 1] = '\0';
+
 		char *saveptr, *tok;
 		tok = strtok_r(line, " ", &saveptr);
 		if (tok != NULL) {
@@ -43,10 +44,10 @@ int fake_main(int argc, char **argv, char **env)
 			strcpy(argv2[i], argv[i]);
 
 			// Erase argument
-			unsigned int len = strlen(argv[i]);
-			char *ptr;
-			for (ptr = argv[i]; ptr < argv[i] + len; ptr++)
-				*ptr = '\0';
+			size_t len = strlen(argv[i]);
+			char *ptr = argv[i];
+			while (ptr < argv[i] + len)
+				*(ptr++) = '\0';
 		}
 	}
 
@@ -77,15 +78,13 @@ int __libc_start_main(
 		// Change program name (works against ps but top manages to
 		// find the original name)
 		// TODO: make it configurable
-		char old_name_len = strlen(ubp_av[0]);
+		size_t old_name_len = strlen(ubp_av[0]);
 		char *new_name = "xxx";
 		strcpy(ubp_av[0], new_name);
 
 		char *ptr = ubp_av[0] + strlen(new_name);
-		while (ptr < ubp_av[0] + old_name_len) {
-			*ptr = '\0';
-			ptr++;
-		}
+		while (ptr < ubp_av[0] + old_name_len)
+			*(ptr++) = '\0';
 	}
 
 	return real__libc_start_main(fake_main, argc, ubp_av, init, fini,
