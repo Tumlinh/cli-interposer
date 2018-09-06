@@ -6,19 +6,48 @@
 #include <unistd.h>
 
 #define MAX_STDIN_ARGS 65536
-#define MAX_SIZE_NAME 65536
 #define ARGS_VIA_STDIN 0
 
-static int (*real_main) (int, char **, char **);
-
-int fake_main(int argc, char **argv, char **env)
+int __libc_start_main(
+	int (*main) (int, char **, char **),
+	int argc, char **ubp_av,
+	void (*init) (void),
+	void (*fini) (void),
+	void (*rtld_fini) (void),
+	void (* stack_end))
 {
-	char **argv2 = malloc(MAX_STDIN_ARGS * sizeof(*argv2));
-	int argc2 = 1;
-	argv2[0] = argv[0];
+	// Get the original __libc_start_main()
+	int (*real__libc_start_main)(
+		int (*main) (int, char **, char **),
+		int argc, char **ubp_av,
+		void (*init) (void),
+		void (*fini) (void),
+		void (*rtld_fini) (void),
+		void (*stack_end)
+	) = dlsym(RTLD_NEXT, "__libc_start_main");
 
+	if (argc <= 0)
+		goto start_main;
+
+	char **argv = ubp_av;
+
+	// Change program name (argv[0])
+	// TODO: make it configurable
+	size_t old_name_len = strlen(argv[0]);
+	char *new_name = "øøø";
+	if (strlen(new_name) <= old_name_len) {
+		memcpy(argv[0], new_name, strlen(new_name) + 1);
+
+		char *ptr = argv[0] + strlen(new_name);
+		while (ptr < argv[0] + old_name_len)
+			*(ptr++) = '\0';
+	}
+
+	char **argv2 = malloc(MAX_STDIN_ARGS * sizeof(*argv2));
+	int argc2;
+	argv2[0] = argv[0];
 	if (ARGS_VIA_STDIN) {
-		// Get true arguments via stdin
+		// Get true arguments via stdin (diversion mode)
 		ssize_t len;
 		char *line;
 		size_t n = 0;
@@ -52,43 +81,8 @@ int fake_main(int argc, char **argv, char **env)
 		}
 	}
 
-	// Call real main() with the new arguments
-	return real_main(argc2, argv2, env);
-}
-
-// This function calls the real __libc_start_main() with a fake main()
-int __libc_start_main(
-	int (*main) (int, char **, char **),
-	int argc, char **ubp_av,
-	void (*init) (void),
-	void (*fini) (void),
-	void (*rtld_fini) (void),
-	void (* stack_end))
-{
-	int (*real__libc_start_main)(
-		int (*main) (int, char **, char **),
-		int argc, char **ubp_av,
-		void (*init) (void),
-		void (*fini) (void),
-		void (*rtld_fini) (void),
-		void (*stack_end)
-	) = dlsym(RTLD_NEXT, "__libc_start_main");
-	real_main = main;
-
-	if (argc > 0) {
-		// Change program name (argv[0])
-		// TODO: make it configurable
-		size_t old_name_len = strlen(ubp_av[0]);
-		char *new_name = "øøø";
-		if (strlen(new_name) <= old_name_len) {
-			memcpy(ubp_av[0], new_name, strlen(new_name) + 1);
-
-			char *ptr = ubp_av[0] + strlen(new_name);
-			while (ptr < ubp_av[0] + old_name_len)
-				*(ptr++) = '\0';
-		}
-	}
-
-	return real__libc_start_main(fake_main, argc, ubp_av, init, fini,
-		rtld_fini, stack_end);
+	start_main:
+	// Call the original __libc_start_main()
+	return real__libc_start_main(main, argc2, argv2, init, fini, rtld_fini,
+		stack_end);
 }
