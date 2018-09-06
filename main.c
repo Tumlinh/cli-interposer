@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #define MAX_STDIN_ARGS 65536
+#define MAX_SIZE_NAME 65536
 #define ARGS_VIA_STDIN 0
 
 static int (*real_main) (int, char **, char **);
@@ -75,16 +76,17 @@ int __libc_start_main(
 	real_main = main;
 
 	if (argc > 0) {
-		// Change program name (works against ps but top manages to
-		// find the original name)
+		// Change program name (argv[0])
 		// TODO: make it configurable
 		size_t old_name_len = strlen(ubp_av[0]);
-		char *new_name = "xxx";
-		strcpy(ubp_av[0], new_name);
+		char *new_name = "øøø";
+		if (strlen(new_name) <= old_name_len) {
+			memcpy(ubp_av[0], new_name, strlen(new_name) + 1);
 
-		char *ptr = ubp_av[0] + strlen(new_name);
-		while (ptr < ubp_av[0] + old_name_len)
-			*(ptr++) = '\0';
+			char *ptr = ubp_av[0] + strlen(new_name);
+			while (ptr < ubp_av[0] + old_name_len)
+				*(ptr++) = '\0';
+		}
 	}
 
 	return real__libc_start_main(fake_main, argc, ubp_av, init, fini,
